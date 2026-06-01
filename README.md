@@ -8,6 +8,7 @@ Two implementations live side by side in this repo:
 
 - **`agent.py`** — Hand-rolled Claude SDK loop (~150 lines). Deliberately framework-free, showing the raw tool-use pattern.
 - **`agent_pydantic.py`** — Built on [Pydantic AI](https://ai.pydantic.dev/). Uses `MCPToolset` for MCP connectivity and `stream_text` for live output.
+- **`streamlit_app.py`** — Chat UI built on `agent_pydantic.py`. Renders tool calls, live text, and conversation history in the browser.
 
 Examples of questions it's built for:
 
@@ -23,10 +24,12 @@ Your question
    ├── agent.py (stdio MCP)
    │   └── spawns spanish-grid-mcp as subprocess → ESIOS / REE / AEMET
    │
-   └── agent_pydantic.py (stdio or HTTP MCP)
-       ├── stdio: spawns spanish-grid-mcp as subprocess
-       └── HTTP:  connects to spanish-grid-mcp at MCP_SERVER_URL
-                  └── docker compose up -d  (separate container)
+    ├── agent_pydantic.py (stdio or HTTP MCP)
+    │   ├── stdio: spawns spanish-grid-mcp as subprocess
+    │   └── HTTP:  connects to spanish-grid-mcp at MCP_SERVER_URL
+    │
+    └── streamlit_app.py (chat UI → agent_pydantic.py)
+        └── same transport options as agent_pydantic.py
 ```
 
 The agentic part is the loop itself — Claude decides which tool to call next based on what it's learned so far. No hand-coded data-gathering pipeline.
@@ -38,7 +41,7 @@ All data comes from the [`spanish-grid-mcp`](https://github.com/raulrc/spanish-g
 ```bash
 git clone https://github.com/raulrc/spanish-grid-research-agent.git
 cd spanish-grid-research-agent
-uv sync
+uv sync --extra ui     # Streamlit is optional — omit --extra ui for CLI-only
 
 cp .env.example .env
 # edit .env: add ANTHROPIC_API_KEY, ESIOS_TOKEN, AEMET_TOKEN
@@ -68,15 +71,23 @@ python agent_pydantic.py "Why were Spanish day-ahead prices high on 2026-05-20?"
 
 # Pydantic AI (HTTP — MCP server running elsewhere)
 MCP_SERVER_URL=http://spanish-grid-mcp:8000/mcp python agent_pydantic.py "..."
+
+# Streamlit UI (stdio MCP — spawns subprocess automatically)
+streamlit run streamlit_app.py
+
+# Streamlit UI (HTTP MCP — server running elsewhere)
+MCP_SERVER_URL=http://localhost:8000/mcp streamlit run streamlit_app.py
 ```
 
-Both agents stream tool calls live, then print a final analysis.
+All three entry points stream tool calls live, then produce the analysis.
 
 ## What's good about the code
 
 **`agent.py`** — An explicit agent loop with no framework dependency (~150 lines). The `while True` + tool dispatch is the whole pattern. Uses prompt caching on the system prompt + tool definitions; after the first iteration each subsequent loop step reuses the cached prefix (~10% of full price). Uses adaptive thinking with summarized display — reasoning summaries stream live and each thinking step is cached individually.
 
 **`agent_pydantic.py`** — A Pydantic AI implementation that demonstrates the framework's MCP integration, live event streaming, and usage tracking. Switches between stdio and Streamable HTTP based on the `MCP_SERVER_URL` env var. Uses `MCPToolset` (the recommended API replacing `MCPServerStdio`) and `stream_text(delta=True)` for live output.
+
+**`streamlit_app.py`** — A chat UI that wraps `run_agent()` from `agent_pydantic.py` with conversation history, live text streaming, tool call log, and usage stats. Uses a background thread to bridge the async agent into Streamlit's sync event loop.
 
 ## Configuration
 
