@@ -24,12 +24,12 @@ Your question
    ├── agent.py (stdio MCP)
    │   └── spawns spanish-grid-mcp as subprocess → ESIOS / REE / AEMET
    │
-    ├── agent_pydantic.py (stdio or HTTP MCP)
-    │   ├── stdio: spawns spanish-grid-mcp as subprocess
-    │   └── HTTP:  connects to spanish-grid-mcp at MCP_SERVER_URL
-    │
-    └── streamlit_app.py (chat UI → agent_pydantic.py)
-        └── same transport options as agent_pydantic.py
+   ├── agent_pydantic.py (stdio or HTTP MCP)
+   │   ├── stdio: spawns spanish-grid-mcp as subprocess
+   │   └── HTTP:  connects to spanish-grid-mcp at MCP_SERVER_URL
+   │
+   └── streamlit_app.py (chat UI → agent_pydantic.py)
+       └── same transport options as agent_pydantic.py
 ```
 
 The agentic part is the loop itself — Claude decides which tool to call next based on what it's learned so far. No hand-coded data-gathering pipeline.
