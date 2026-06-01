@@ -156,12 +156,12 @@ async def run_agent(question: str) -> AsyncIterator[AgentEvent]:
                 yield event
 
             await text_task
-            u = result.usage
+            usage = result.usage
             yield UsageEvent(
-                u.input_tokens,
-                u.output_tokens,
-                u.cache_read_tokens,
-                u.cache_write_tokens,
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.cache_read_tokens,
+                usage.cache_write_tokens,
             )
 
 
