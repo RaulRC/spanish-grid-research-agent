@@ -29,6 +29,8 @@ Your question
 
 The agentic part is the loop itself — Claude decides which tool to call next based on what it's learned so far. No hand-coded data-gathering pipeline.
 
+All data comes from the [`spanish-grid-mcp`](https://github.com/raulrc/spanish-grid-mcp) server, which wraps ESIOS, REE apidatos, and AEMET OpenData behind an MCP interface.
+
 ## Install
 
 ```bash
@@ -40,10 +42,11 @@ cp .env.example .env
 # edit .env: add ANTHROPIC_API_KEY, ESIOS_TOKEN, AEMET_TOKEN
 ```
 
-For the **stdio** path (`agent.py` or `agent_pydantic.py` without `MCP_SERVER_URL`), the `spanish-grid-mcp` package must be importable:
+For the **stdio** path (`agent.py` or `agent_pydantic.py` without `MCP_SERVER_URL`), the [`spanish-grid-mcp`](https://github.com/raulrc/spanish-grid-mcp) package must be importable:
 
 ```bash
-uv pip install -e ../spanish-grid-mcp  # or: pip install -e ../spanish-grid-mcp
+git clone https://github.com/raulrc/spanish-grid-mcp.git ../spanish-grid-mcp
+uv pip install -e ../spanish-grid-mcp
 ```
 
 For the **HTTP** path, you only need a running MCP server:
@@ -84,7 +87,7 @@ Both agents stream tool calls live, then print a final analysis.
 | `AGENT_MAX_STEPS` | `20` | Hard ceiling on loop iterations (both agents). |
 | `ESIOS_TOKEN`, `AEMET_TOKEN` | — | Forwarded to the MCP server subprocess. |
 
-The `spanish-grid-mcp` server also accepts `--transport streamable-http` to run as an HTTP server instead of stdio.
+The [`spanish-grid-mcp`](https://github.com/raulrc/spanish-grid-mcp) server also accepts `--transport streamable-http` to run as an HTTP server instead of stdio.
 
 ## Status
 
