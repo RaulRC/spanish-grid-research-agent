@@ -13,7 +13,8 @@ import json
 import os
 import shlex
 import sys
-from collections.abc import AsyncIterable
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -33,6 +34,7 @@ load_dotenv()
 
 MODEL = os.getenv("AGENT_MODEL", "claude-opus-4-7")
 MAX_STEPS = int(os.getenv("AGENT_MAX_STEPS", "20"))
+MAX_TOKENS = int(os.getenv("AGENT_MAX_TOKENS", "8192"))
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL")
 MCP_SERVER_CMD = (
     shlex.split(os.environ["MCP_SERVER_CMD"])
@@ -46,28 +48,51 @@ SYSTEM_PROMPT = (
 )
 
 
-async def event_stream_handler(
-    ctx: RunContext,
-    event_stream: AsyncIterable[AgentStreamEvent],
-) -> None:
-    """Live-stream tool calls as they happen."""
-    async for event in event_stream:
-        if isinstance(event, FunctionToolCallEvent):
-            print(
-                f"\n[tool] {event.part.tool_name}({json.dumps(event.part.args)})"
-            )
-        elif isinstance(event, FunctionToolResultEvent):
-            result = event.part.content
-            if len(result) > 200:
-                result = result[:200] + "..."
-            print(f"[tool] → {result}")
+# --- Event types ------------------------------------------------------------
 
 
-async def run(question: str) -> None:
+@dataclass
+class ToolCallEvent:
+    name: str
+    args: str
+
+
+@dataclass
+class ToolResultEvent:
+    content_preview: str
+
+
+@dataclass
+class TextDeltaEvent:
+    content: str
+
+
+@dataclass
+class UsageEvent:
+    input_tokens: int
+    output_tokens: int
+    cache_read: int
+    cache_write: int
+
+
+@dataclass
+class LogEvent:
+    message: str
+
+
+AgentEvent = ToolCallEvent | ToolResultEvent | TextDeltaEvent | UsageEvent | LogEvent
+
+
+# --- Core agent loop --------------------------------------------------------
+
+
+async def run_agent(question: str) -> AsyncIterator[AgentEvent]:
+    """Run the research agent, yielding typed events for consumers (CLI, Streamlit, etc.)."""
     if MCP_SERVER_URL:
-        print(f"[agent] Connecting to MCP server at {MCP_SERVER_URL}")
+        yield LogEvent(f"Connecting to MCP server at {MCP_SERVER_URL}")
         mcp_server = MCPToolset(MCP_SERVER_URL)
     else:
+        yield LogEvent("Starting MCP server subprocess")
         from fastmcp.client import Client
         from fastmcp.client.transports import StdioTransport
 
@@ -84,6 +109,7 @@ async def run(question: str) -> None:
         system_prompt=SYSTEM_PROMPT,
         toolsets=[mcp_server],
         model_settings=AnthropicModelSettings(
+            max_tokens=MAX_TOKENS,
             anthropic_thinking={"type": "adaptive"},
             anthropic_effort="high",
             anthropic_cache=True,
@@ -91,23 +117,72 @@ async def run(question: str) -> None:
         ),
     )
 
-    print(f"[agent] Connected to MCP server. Starting research.\n")
+    yield LogEvent("Connected to MCP server. Starting research.")
 
     async with agent:
+        queue: asyncio.Queue[AgentEvent | None] = asyncio.Queue()
+
+        async def event_handler(
+            ctx: RunContext,
+            event_stream: AsyncIterable[AgentStreamEvent],
+        ) -> None:
+            async for event in event_stream:
+                if isinstance(event, FunctionToolCallEvent):
+                    await queue.put(
+                        ToolCallEvent(event.part.tool_name, json.dumps(event.part.args))
+                    )
+                elif isinstance(event, FunctionToolResultEvent):
+                    preview = event.part.content
+                    if len(preview) > 200:
+                        preview = preview[:200] + "..."
+                    await queue.put(ToolResultEvent(preview))
+
         async with agent.run_stream(
             question,
-            event_stream_handler=event_stream_handler,
+            event_stream_handler=event_handler,
             usage_limits=UsageLimits(request_limit=MAX_STEPS),
         ) as result:
-            async for chunk in result.stream_text(delta=True):
-                print(chunk, end="", flush=True)
-            print()
-            u = result.usage
+            async def stream_text_to_queue() -> None:
+                async for chunk in result.stream_text(delta=True):
+                    await queue.put(TextDeltaEvent(chunk))
+                await queue.put(None)
 
-    print(
-        f"\n[usage] input={u.input_tokens} output={u.output_tokens} "
-        f"cache_read={u.cache_read_tokens} cache_write={u.cache_write_tokens}"
-    )
+            text_task = asyncio.create_task(stream_text_to_queue())
+
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield event
+
+            await text_task
+            u = result.usage
+            yield UsageEvent(
+                u.input_tokens,
+                u.output_tokens,
+                u.cache_read_tokens,
+                u.cache_write_tokens,
+            )
+
+
+# --- CLI entry point --------------------------------------------------------
+
+
+async def run(question: str) -> None:
+    async for event in run_agent(question):
+        if isinstance(event, LogEvent):
+            print(event.message)
+        elif isinstance(event, ToolCallEvent):
+            print(f"\n[tool] {event.name}({event.args})")
+        elif isinstance(event, ToolResultEvent):
+            print(f"[tool] → {event.content_preview}")
+        elif isinstance(event, TextDeltaEvent):
+            print(event.content, end="", flush=True)
+        elif isinstance(event, UsageEvent):
+            print(
+                f"\n[usage] input={event.input_tokens} output={event.output_tokens} "
+                f"cache_read={event.cache_read} cache_write={event.cache_write}"
+            )
 
 
 def main() -> None:

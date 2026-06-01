@@ -2,6 +2,8 @@
 
 A "deep research" agent for the Spanish electricity market. Ask it a question in plain language; it autonomously decides which Spanish grid data to fetch, calls the [`spanish-grid-mcp`](https://github.com/raulrc/spanish-grid-mcp) server over MCP, iterates as needed, and produces a written analysis with sources.
 
+<a href="images/streamlit-app.png"><img src="images/streamlit-app.png" width="700" alt="Streamlit UI"></a>
+
 Two implementations live side by side in this repo:
 
 - **`agent.py`** — Hand-rolled Claude SDK loop (~150 lines). Deliberately framework-free, showing the raw tool-use pattern.
@@ -85,6 +87,7 @@ Both agents stream tool calls live, then print a final analysis.
 | `MCP_SERVER_CMD` | `python -m spanish_grid_mcp.server` | Command that launches the MCP server subprocess (stdio mode only). |
 | `AGENT_MODEL` | `claude-opus-4-7` | Override to a cheaper model like `claude-sonnet-4-6`. |
 | `AGENT_MAX_STEPS` | `20` | Hard ceiling on loop iterations (both agents). |
+| `AGENT_MAX_TOKENS` | `8192` | Max output tokens per response (`agent_pydantic.py` only). Increase if using extended thinking with smaller models. |
 | `ESIOS_TOKEN`, `AEMET_TOKEN` | — | Forwarded to the MCP server subprocess. |
 
 The [`spanish-grid-mcp`](https://github.com/raulrc/spanish-grid-mcp) server also accepts `--transport streamable-http` to run as an HTTP server instead of stdio.

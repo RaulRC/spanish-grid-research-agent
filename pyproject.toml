@@ -14,6 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["ruff>=0.6.0"]
+ui = ["streamlit>=1.58.0"]
 
 [project.scripts]
 spanish-grid-agent = "agent:main"
